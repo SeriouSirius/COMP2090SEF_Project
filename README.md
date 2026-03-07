@@ -7,7 +7,7 @@
 Preliminary code for both tasks.
 
 ## Task 1: OOP-based Ticket Selling System
-- Folder: [Task 1/]
+- Folder: [Task 1/](Task%201/)
 - Preliminary: Event and ticket classes with basic OOP 
 - Run: `cd "Task 1" && python main.py`
 
@@ -15,3 +15,4 @@ Preliminary code for both tasks.
 - Folder: [Task 2/](Task%202/)
 - Preliminary: Trie (data structure) + Dijkstra (algorithm) implementations  
 - Run: `cd "Task 2" && python demo.py`
+
