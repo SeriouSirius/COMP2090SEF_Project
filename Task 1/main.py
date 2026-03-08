@@ -4,3 +4,16 @@ class Event:
         self.date = date
         self.time = time
         self.location = location
+
+class ticket(Event):
+    def __init__(self, event, price, type, stock):
+        self.event = event
+        self.price = price
+        self.type = type
+        self.stock = stock
+
+
+class User(Event):
+    def __init__(self, username, email):
+        self.username = username
+        self.email = email
