@@ -1,8 +1,8 @@
 # COMP2090SEF Project - Pre-submission
 
 **Group:** Group 103
+
 **Members:** WONG Shing Chak (13881205),FAN Hang Lok (14257260),Li Vinccent (13494788)
-**Submission Date:** March 8, 2026
 
 Preliminary code for both tasks.
 
