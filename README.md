@@ -13,6 +13,6 @@ Preliminary code for both tasks.
 
 ## Task 2: Self-study Data Structure + Algorithm
 - Folder: [Task 2/](Task%202/)
-- Preliminary: Trie (data structure) + Dijkstra (algorithm) implementations  
+- Preliminary: A Heap (Priority Queue) for data structure + Interval Scheduling algorithms (algorithm) implementations  
 - Run: `cd "Task 2" && python demo.py`
 
