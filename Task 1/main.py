@@ -1,3 +1,6 @@
+from ..Task_2.demo import Combine as alds
+
+
 class Event:
     def __init__(self, name, date, time, location):
         self.name = name
