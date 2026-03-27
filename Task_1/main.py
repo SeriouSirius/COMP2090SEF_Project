@@ -1,5 +1,4 @@
-from ..Task_2.algorithm import Algorithm as al
-from ..Task_2.data_structure import DataStructure as dt
+from ..Task_2.algorithm_data_structure import HierarchicalTimingWheel, CircularQueue
 
 
 class Event:
@@ -9,11 +8,7 @@ class Event:
         self.time = time
         self.location = location
 
-    def get_event_details(self):
-        return f"Event: {self.name}, Date: {self.date}, Time: {self.time}, Location: {self.location}"
-    
-
-class Ticket(Event):
+class ticket(Event):
     def __init__(self, event, price, type, stock):
         self.event = event
         self.price = price

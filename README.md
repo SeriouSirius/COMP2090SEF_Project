@@ -7,12 +7,12 @@
 Preliminary code for both tasks.
 
 ## Task 1: OOP-based Ticket Selling System
-- Folder: [Task 1/](Task%201/)
-- Preliminary: Event and ticket classes with basic OOP 
-- Run: `cd "Task 1" && python main.py`
+- Folder: `Task_1/`
+- Current: simple OOP ticket selling CLI with sample events and stock management
+- Run: `cd Task_1 && python main.py`
 
 ## Task 2: Self-study Data Structure + Algorithm
-- Folder: [Task 2/](Task%202/)
-- Preliminary: Max-Heap (data structure) + Heap sort (algorithm) implementations  
-- Run: `cd "Task 2" && python demo.py`
+- Folder: `Task_2/`
+- Preliminary: Circular Queue + Hierarchical Timing Wheels implementations  
+- Run: `cd Task_2 && python demo.py`
 
