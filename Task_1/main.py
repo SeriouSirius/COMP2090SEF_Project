@@ -9,6 +9,10 @@ class Event:
         self.time = time
         self.location = location
 
+    def get_event_details(self):
+        return f"Event: {self.name}, Date: {self.date}, Time: {self.time}, Location: {self.location}"
+    
+
 class Ticket(Event):
     def __init__(self, event, price, type, stock):
         self.event = event
