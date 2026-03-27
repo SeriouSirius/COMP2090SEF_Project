@@ -1,4 +1,5 @@
-from ..Task_2.demo import Combine as alds
+from ..Task_2.algorithm import Algorithm as al
+from ..Task_2.data_structure import DataStructure as dt
 
 
 class Event:
@@ -8,7 +9,7 @@ class Event:
         self.time = time
         self.location = location
 
-class ticket(Event):
+class Ticket(Event):
     def __init__(self, event, price, type, stock):
         self.event = event
         self.price = price
