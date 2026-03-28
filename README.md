@@ -14,5 +14,4 @@ Preliminary code for both tasks.
 ## Task 2: Self-study Data Structure + Algorithm
 - Folder: `Task_2/`
 - Preliminary: Circular Queue + Hierarchical Timing Wheels implementations  
-- Run: `cd Task_2 && python demo.py`
 
