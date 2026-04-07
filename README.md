@@ -2,7 +2,7 @@
 
 **Group:** Group 103
 
-**Members:** WONG Shing Chak (13881205),FAN Hang Lok (14257260),Li Vinccent (13494788)
+**Members:** WONG Shing Chak (13881205),FAN Hang Lok (14257260),Li Vincent (13494788)
 
 Preliminary code for both tasks.
 
