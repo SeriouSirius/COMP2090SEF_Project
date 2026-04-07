@@ -4,6 +4,7 @@ import sys
 import os
 import json
 import qrcode
+from pathlib import Path
 from PIL import Image, ImageTk
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,8 +24,7 @@ class EventTickPro(ctk.CTk):
         self.title("EventTick Pro - Professional Ticketing System")
         self.geometry("1280x720")
         self.minsize(1100, 700)
-
-        self.data_dir = "data"
+        self.data_dir = Path(__file__).parent.parent / "data"
         os.makedirs(self.data_dir, exist_ok=True)
 
         self.users = {}
