@@ -1,13 +1,12 @@
 import sys
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
-
-from Task_1.build_db import DATABASE_PATH, DatabaseManager, hash_password
-from Task_2.algorithm_data_structure import HierarchicalTimingWheel
+CURRENT_DIR = Path(__file__).parent.resolve()
+if str(CURRENT_DIR) not in sys.path:
+    sys.path.insert(0, str(CURRENT_DIR))
+# from build_db import DATABASE_PATH, DatabaseManager, hash_password   # ← 如果沒有 build_db.py，請保持這行被註解
+# from Task_2.algorithm_data_structure import HierarchicalTimingWheel
 
 PAYMENT_WINDOW_SECONDS = 300  # 5 minutes
 
@@ -101,7 +100,6 @@ class EventService:
         self.database = database
 
     def list_events(self):
-        """Keep original name for CLI compatibility - shows upcoming events only"""
         now = datetime.now().isoformat()
         rows = self.database.fetchall(
             "SELECT * FROM events WHERE event_date > ? ORDER BY event_date, title",
@@ -213,7 +211,6 @@ class BookingService:
                 self.expire_booking(booking_id)
 
     def create_booking(self, user_id, event_id, ticket_type_id, quantity):
-        # Prevent booking past events
         event = self.event_service.get_event(event_id)
         if event and event.event_date <= datetime.now():
             return None, "Cannot book tickets for past or ongoing events"
@@ -233,7 +230,6 @@ class BookingService:
 
         total_price = ticket_row["price"] * quantity
 
-        # Atomic Transaction (Critical Fix)
         try:
             self.database.connection.execute("BEGIN TRANSACTION")
 
@@ -361,9 +357,14 @@ class TicketSystem:
         self.booking_service.process_expired_bookings()
 
     def refresh_current_user(self):
-        """Call this after balance changes (payment, add balance, etc.)"""
         if self.current_user:
             self.current_user = self.auth_service.get_user_by_id(self.current_user.user_id)
 
     def close(self):
         self.database.close()
+
+if __name__ == "__main__":
+    print("Starting EventTick Pro GUI...")
+    from gui.main_gui import EventTickPro
+    app = EventTickPro()
+    app.mainloop()

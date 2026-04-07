@@ -1,0 +1,8 @@
+{
+  "admin": {
+    "password": "admin",
+    "name": "System Administrator",
+    "role": "admin",
+    "is_vip": false
+  }
+}

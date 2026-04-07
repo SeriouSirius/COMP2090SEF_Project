@@ -5,9 +5,10 @@ class Payment:
 
 class CreditCardPayment(Payment):
     def pay(self, amount):
-        print(f"Paid {amount} by Credit Card")
-
+        #print(f"Paid {amount} by Credit Card")
+        pass
 
 class PayPalPayment(Payment):
     def pay(self, amount):
-        print(f"Paid {amount} by PayPal")
+        #print(f"Paid {amount} by PayPal")
+        pass
