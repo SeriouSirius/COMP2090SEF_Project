@@ -1,6 +1,7 @@
 import hashlib
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
 
@@ -11,36 +12,55 @@ if str(BASE_DIR) not in sys.path:
 DATABASE_PATH = BASE_DIR / "database" / "db.db"
 SUPER_ADMIN_USERNAME = "admin"
 SUPER_ADMIN_PASSWORD = "admin123"
+SUPER_ADMIN_PAYMENT_PIN = "0000"
 
 
 class DatabaseManager:
     def __init__(self, db_path=DATABASE_PATH):
         self.db_path = db_path
-        self.connection = sqlite3.connect(self.db_path)
+        self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
+        self._lock = threading.RLock()
 
     def execute(self, query, parameters=()):
-        cursor = self.connection.cursor()
-        cursor.execute(query, parameters)
-        self.connection.commit()
-        return cursor
+        with self._lock:
+            cursor = self.connection.cursor()
+            cursor.execute(query, parameters)
+            self.connection.commit()
+            return cursor
 
     def fetchone(self, query, parameters=()):
-        cursor = self.connection.cursor()
-        cursor.execute(query, parameters)
-        return cursor.fetchone()
+        with self._lock:
+            cursor = self.connection.cursor()
+            cursor.execute(query, parameters)
+            return cursor.fetchone()
 
     def fetchall(self, query, parameters=()):
-        cursor = self.connection.cursor()
-        cursor.execute(query, parameters)
-        return cursor.fetchall()
+        with self._lock:
+            cursor = self.connection.cursor()
+            cursor.execute(query, parameters)
+            return cursor.fetchall()
 
     def close(self):
-        self.connection.close()
+        with self._lock:
+            self.connection.close()
 
 
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def ensure_users_table_schema(database):
+    columns = {row["name"] for row in database.fetchall("PRAGMA table_info(users)")}
+    if "payment_pin_hash" not in columns:
+        database.execute(
+            "ALTER TABLE users ADD COLUMN payment_pin_hash TEXT NOT NULL DEFAULT ''"
+        )
+
+    database.execute(
+        "UPDATE users SET payment_pin_hash = ? WHERE payment_pin_hash IS NULL OR payment_pin_hash = ''",
+        (hash_password(SUPER_ADMIN_PAYMENT_PIN),),
+    )
 
 
 def create_tables(database):
@@ -51,6 +71,7 @@ def create_tables(database):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            payment_pin_hash TEXT NOT NULL,
             balance REAL NOT NULL DEFAULT 0,
             is_admin INTEGER NOT NULL DEFAULT 0
         )
@@ -100,15 +121,31 @@ def create_tables(database):
         )
         """
     )
+    ensure_users_table_schema(database)
 
 
 def seed_super_admin(database):
-    if database.fetchone("SELECT id FROM users WHERE username = ?", (SUPER_ADMIN_USERNAME,)):
+    existing_row = database.fetchone(
+        "SELECT id, payment_pin_hash FROM users WHERE username = ?",
+        (SUPER_ADMIN_USERNAME,),
+    )
+    if existing_row:
+        if not existing_row["payment_pin_hash"]:
+            database.execute(
+                "UPDATE users SET payment_pin_hash = ? WHERE id = ?",
+                (hash_password(SUPER_ADMIN_PAYMENT_PIN), existing_row["id"]),
+            )
         return
 
     database.execute(
-        "INSERT INTO users (username, password_hash, balance, is_admin) VALUES (?, ?, ?, ?)",
-        (SUPER_ADMIN_USERNAME, hash_password(SUPER_ADMIN_PASSWORD), 0.0, 1),
+        "INSERT INTO users (username, password_hash, payment_pin_hash, balance, is_admin) VALUES (?, ?, ?, ?, ?)",
+        (
+            SUPER_ADMIN_USERNAME,
+            hash_password(SUPER_ADMIN_PASSWORD),
+            hash_password(SUPER_ADMIN_PAYMENT_PIN),
+            0.0,
+            1,
+        ),
     )
 
 

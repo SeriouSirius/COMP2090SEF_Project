@@ -55,14 +55,18 @@ class AuthService:
     def __init__(self, database):
         self.database = database
 
-    def register(self, username, password):
+    def register(self, username, password, payment_pin):
         if self.database.fetchone("SELECT id FROM users WHERE username = ?", (username,)):
             return None, "Username already exists"
 
+        if not payment_pin or not payment_pin.isdigit() or len(payment_pin) != 4:
+            return None, "Payment PIN must be exactly 4 digits"
+
         password_hash = self._hash_password(password)
+        payment_pin_hash = self._hash_password(payment_pin)
         cursor = self.database.execute(
-            "INSERT INTO users (username, password_hash, balance, is_admin) VALUES (?, ?, ?, ?)",
-            (username, password_hash, 0.0, 0),
+            "INSERT INTO users (username, password_hash, payment_pin_hash, balance, is_admin) VALUES (?, ?, ?, ?, ?)",
+            (username, password_hash, payment_pin_hash, 0.0, 0),
         )
         return self.get_user_by_id(cursor.lastrowid), "Register success"
 
@@ -82,6 +86,25 @@ class AuthService:
         if row is None:
             return None
         return self._row_to_user(row)
+
+    def verify_payment_pin(self, user_id, payment_pin):
+        if not payment_pin:
+            return False, "Payment PIN is required"
+        if not payment_pin.isdigit() or len(payment_pin) != 4:
+            return False, "Payment PIN must be exactly 4 digits"
+
+        row = self.database.fetchone(
+            "SELECT payment_pin_hash FROM users WHERE id = ?",
+            (user_id,),
+        )
+        if row is None:
+            return False, "User not found"
+        if not row["payment_pin_hash"]:
+            return False, "Payment PIN is not set for this user"
+
+        if row["payment_pin_hash"] != self._hash_password(payment_pin):
+            return False, "Payment PIN is incorrect"
+        return True, "Payment PIN verified"
 
     def _hash_password(self, password):
         return hash_password(password)
@@ -180,10 +203,11 @@ class BalanceService:
 
 
 class BookingService:
-    def __init__(self, database, event_service, balance_service):
+    def __init__(self, database, event_service, balance_service, auth_service):
         self.database = database
         self.event_service = event_service
         self.balance_service = balance_service
+        self.auth_service = auth_service
         self.timing_wheel = HierarchicalTimingWheel()
         self.pending_booking_ids = set()
         self._load_pending_bookings()
@@ -250,13 +274,17 @@ class BookingService:
         self.pending_booking_ids.add(booking_id)
         return self.get_booking(booking_id), "Booking created. Please pay in 5 minutes."
 
-    def pay_booking(self, booking_id, user_id):
+    def pay_booking(self, booking_id, user_id, payment_pin):
         booking = self.get_booking(booking_id)
         if booking is None or booking.user_id != user_id:
             return False, "Booking not found"
 
         if booking.status != "pending":
             return False, f"Booking status is {booking.status}"
+
+        pin_ok, pin_message = self.auth_service.verify_payment_pin(user_id, payment_pin)
+        if not pin_ok:
+            return False, pin_message
 
         if datetime.now() > datetime.fromisoformat(booking.expires_at):
             self.expire_booking(booking.booking_id)
@@ -332,8 +360,8 @@ class BookingService:
 
 
 class TicketSystem:
-    def __init__(self):
-        self.database = DatabaseManager(DATABASE_PATH)
+    def __init__(self, database_path=DATABASE_PATH):
+        self.database = DatabaseManager(database_path)
         self.auth_service = AuthService(self.database)
         self.event_service = EventService(self.database)
         self.balance_service = BalanceService(self.database, self.auth_service)
@@ -341,6 +369,7 @@ class TicketSystem:
             self.database,
             self.event_service,
             self.balance_service,
+            self.auth_service,
         )
         self.current_user = None
         self.booking_service.process_expired_bookings()

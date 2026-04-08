@@ -53,7 +53,8 @@ class TicketSystemCLI:
     def handle_register(self):
         username = input("Username: ").strip()
         password = input("Password: ").strip()
-        user, message = self.system.auth_service.register(username, password)
+        payment_pin = input("Payment PIN (4 digits): ").strip()
+        user, message = self.system.auth_service.register(username, password, payment_pin)
         print(message)
         if user:
             self.system.current_user = user
@@ -151,9 +152,11 @@ class TicketSystemCLI:
 
         pay_now = input("Pay now? (y/n): ").strip().lower()
         if pay_now == "y":
+            payment_pin = input("Enter Payment PIN: ").strip()
             _, payment_message = self.system.booking_service.pay_booking(
                 booking.booking_id,
                 self.system.current_user.user_id,
+                payment_pin,
             )
             print(payment_message)
             self.system.current_user = self.system.auth_service.get_user_by_id(
@@ -179,6 +182,15 @@ class TicketSystemCLI:
 
             if amount <= 0:
                 print("Amount must be greater than 0")
+                return
+
+            payment_pin = input("Enter Payment PIN: ").strip()
+            pin_ok, pin_message = self.system.auth_service.verify_payment_pin(
+                self.system.current_user.user_id,
+                payment_pin,
+            )
+            if not pin_ok:
+                print(pin_message)
                 return
 
             new_balance = self.system.balance_service.add_balance(
@@ -231,9 +243,11 @@ class TicketSystemCLI:
             print(f"Pay before: {booking['expires_at']}")
             pay_now = input("Pay now? (y/n): ").strip().lower()
             if pay_now == "y":
+                payment_pin = input("Enter Payment PIN: ").strip()
                 _, payment_message = self.system.booking_service.pay_booking(
                     booking["id"],
                     self.system.current_user.user_id,
+                    payment_pin,
                 )
                 print(payment_message)
                 self.system.current_user = self.system.auth_service.get_user_by_id(
