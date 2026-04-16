@@ -42,3 +42,4 @@ https://github.com/user-attachments/assets/120718f5-0c87-4fe8-9656-cfb7257acba1
 - Folder: `Task_2/`
 - Preliminary: Circular Queue + Hierarchical Timing Wheels implementations  
 
+Task 2 Introduction Video: https://youtu.be/Vpt909xC0cg
