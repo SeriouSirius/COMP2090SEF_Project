@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="slides-format" content="viewport">
+    <title>Task 2 – Circular Queue & Hierarchical Timing Wheel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+        @theme {
+            --color-bg: #0a0f1e;
+            --color-bg-deep: #060912;
+            --color-surface: #111827;
+            --color-text: #f1f5f9;
+            --color-text-secondary: #cbd5e1;
+            --color-text-muted: #64748b;
+            --color-accent-1: #38bdf8;
+            --color-accent-2: #818cf8;
+            --color-accent-3: #34d399;
+            --color-glass-bg: rgba(255,255,255,0.05);
+            --color-glass-border: rgba(255,255,255,0.08);
+            --color-vignette: rgba(0,0,0,0.45);
+            --font-display: 'Instrument Serif', serif;
+            --font-body: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+    </style>
+    <style>
+        :root { --color-bg:#0a0f1e; --color-text:#f1f5f9; --glow-color-rgb:56,189,248; }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { background: var(--color-bg); margin: 0; }
+        body { font-family: var(--font-body); color: var(--color-text); overflow: hidden; height: 100vh; width: 100vw; }
+        .deck { width:100vw; height:100vh; position:relative; }
+        .slide { position:absolute; top:0; left:0; width:100%; height:100%; background:var(--color-bg); display:flex; flex-direction:column; align-items:center; justify-content:center; opacity:0; transform:scale(0.95); transition:opacity 0.7s ease, transform 0.7s ease; pointer-events:none; overflow:hidden; }
+        .slide.active { opacity:1; transform:scale(1); pointer-events:all; }
+        .slide > .content { position:relative; z-index:2; width:100%; max-width:1100px; padding:clamp(1.5rem,3vw,3.5rem); }
+        .nav-controls { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; z-index:100; background:var(--color-glass-bg); backdrop-filter:blur(10px); padding:9px 22px; border-radius:40px; border:1px solid var(--color-glass-border); }
+        .nav-btn { width:38px; height:38px; border:none; background:var(--color-glass-bg); color:var(--color-accent-1); border-radius:50%; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.3s; }
+        .nav-btn:hover { background:var(--color-glass-border); }
+        .slide-dots { display:flex; gap:7px; }
+        .slide-dots .dot { width:9px; height:9px; border-radius:50%; background:var(--color-glass-border); cursor:pointer; transition:background 0.3s, transform 0.3s; }
+        .slide-dots .dot.active { background:var(--color-accent-1); transform:scale(1.35); }
+        .slide-counter { font-size:0.78rem; color:var(--color-text-muted); min-width:38px; text-align:center; }
+        .reveal { opacity:0; transform:translateY(20px); }
+
+        /* Glow */
+        .text-glow { text-shadow:0 0 20px rgba(56,189,248,0.5),0 0 40px rgba(56,189,248,0.2); }
+        .stat-glow { text-shadow:0 0 30px rgba(56,189,248,0.6),0 0 60px rgba(56,189,248,0.25); }
+        @keyframes glow-pulse {
+            0%,100% { text-shadow:0 0 20px rgba(56,189,248,0.5),0 0 40px rgba(56,189,248,0.2); }
+            50% { text-shadow:0 0 30px rgba(56,189,248,0.9),0 0 60px rgba(56,189,248,0.35); }
+        }
+        .glow-pulse { animation:glow-pulse 3s ease-in-out infinite; }
+
+        /* Blobs */
+        @keyframes float-slow { 0%{transform:translate(0,0) scale(1)} 25%{transform:translate(60px,-50px) scale(1.12)} 50%{transform:translate(-40px,40px) scale(0.9)} 75%{transform:translate(50px,20px) scale(1.08)} 100%{transform:translate(0,0) scale(1)} }
+        @keyframes float-drift { 0%{transform:translate(0,0) scale(1) rotate(0deg)} 33%{transform:translate(-50px,-60px) scale(1.15) rotate(3deg)} 66%{transform:translate(40px,30px) scale(0.88) rotate(-2deg)} 100%{transform:translate(0,0) scale(1) rotate(0deg)} }
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-15px)} }
+        .gradient-mesh { position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+        .blob { position:absolute; border-radius:50%; filter:blur(80px); animation:float-slow 10s ease-in-out infinite; }
+        .blob:nth-child(2) { animation:float-drift 14s ease-in-out infinite; }
+        .blob:nth-child(3) { animation:float-slow 18s ease-in-out infinite reverse; }
+        .slide::before { content:''; position:absolute; inset:0; z-index:1; pointer-events:none; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); background-size:256px 256px; opacity:0.03; mix-blend-mode:overlay; }
+        .slide::after { content:''; position:absolute; inset:0; z-index:1; pointer-events:none; background:radial-gradient(ellipse at center, transparent 50%, var(--color-vignette) 100%); }
+
+        /* Bar chart */
+        .bar-chart { display:flex; align-items:flex-end; gap:clamp(0.4rem,1vw,0.75rem); height:clamp(100px,16vh,160px); }
+        .bar-col { display:flex; flex-direction:column; align-items:center; gap:0.3rem; flex:1; }
+        .bar { border-radius:6px 6px 0 0; width:100%; }
+
+        /* Ring animation */
+        .donut-ring { stroke-dasharray:251.3; stroke-dashoffset:251.3; stroke-linecap:round; }
+
+        /* Timing wheel */
+        @keyframes rotate-wheel { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes spin-very-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        .wheel-second { animation: spin-slow 8s linear infinite; transform-origin: center; }
+        .wheel-minute { animation: spin-very-slow 30s linear infinite; transform-origin: center; }
+        .wheel-hand { transform-origin: center bottom; }
+
+        /* Cascade arrow animation */
+        @keyframes cascade-anim {
+            0%,100% { opacity:0.3; transform:translateY(0); }
+            50% { opacity:1; transform:translateY(4px); }
+        }
+        .cascade-arrow { animation: cascade-anim 2s ease-in-out infinite; }
+
+        /* Queue slot highlight */
+        @keyframes slot-highlight {
+            0%,100% { background: rgba(56,189,248,0.08); }
+            50% { background: rgba(56,189,248,0.35); box-shadow: 0 0 12px rgba(56,189,248,0.4); }
+        }
+        .slot-active { animation: slot-highlight 2s ease-in-out infinite; }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration:0.01ms !important; transition-duration:0.2s !important; }
+        }
+    </style>
+</head>
+<body>
+<div class="mouse-spotlight" style="position:fixed;inset:0;z-index:99;pointer-events:none;"></div>
+<div class="deck">
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 1: TITLE
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-1 active" data-slide="1">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:500px;height:500px;top:-120px;right:-100px;background:var(--color-accent-1);opacity:0.14;"></div>
+        <div class="blob" style="width:320px;height:320px;bottom:-80px;left:-70px;background:var(--color-accent-2);opacity:0.12;"></div>
+        <div class="blob" style="width:220px;height:220px;top:42%;left:14%;background:var(--color-accent-3);opacity:0.10;"></div>
+    </div>
+    <canvas class="particle-canvas" style="position:absolute;inset:0;z-index:1;"></canvas>
+    <div class="content text-center">
+        <div class="text-[90px] mb-4 animate-[float_3s_ease-in-out_infinite] reveal">⚙️</div>
+        <h1 class="font-display text-[clamp(2.4rem,5.5vw,4.5rem)] font-black bg-linear-to-br from-accent-1 via-accent-2 to-accent-1 bg-clip-text text-transparent tracking-tight mb-4 reveal">
+            Task 2: Self-Study
+        </h1>
+        <p class="text-[clamp(1rem,1.6vw,1.4rem)] font-light text-text-muted tracking-[5px] uppercase mb-6 reveal">
+            Circular Queue &amp; Hierarchical Timing Wheel
+        </p>
+        <p class="text-text-secondary text-base reveal">COMP2090SEF · Group 103 · HKMU 2026</p>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 2: MOTIVATION — WHY THESE TOPICS?
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-2" data-slide="2">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:380px;height:380px;top:-80px;right:-80px;background:var(--color-accent-2);opacity:0.09;"></div>
+        <div class="blob" style="width:240px;height:240px;bottom:-60px;left:-40px;background:var(--color-accent-1);opacity:0.07;"></div>
+    </div>
+    <div class="content">
+        <p class="text-accent-1 uppercase tracking-[5px] text-sm font-semibold mb-2 reveal">Motivation</p>
+        <h2 class="font-display text-[clamp(1.8rem,4vw,2.8rem)] font-bold mb-8 reveal">Why These Topics?</h2>
+        <div class="grid grid-cols-3 gap-5">
+            <div class="bg-glass-bg backdrop-blur-xl border border-glass-border rounded-xl p-6 hover:-translate-y-1 transition reveal" style="border-left:4px solid var(--color-accent-3);">
+                <div class="text-4xl mb-3">🎫</div>
+                <h3 class="font-semibold text-text text-base mb-2">Task 1 Problem</h3>
+                <p class="text-text-secondary text-sm leading-relaxed">Ticket booking system needed to expire unpaid bookings after exactly <strong class="text-accent-3">300 seconds</strong>.</p>
+            </div>
+            <div class="bg-glass-bg backdrop-blur-xl border border-glass-border rounded-xl p-6 hover:-translate-y-1 transition reveal" style="border-left:4px solid var(--color-accent-1);">
+                <div class="text-4xl mb-3">🔄</div>
+                <h3 class="font-semibold text-text text-base mb-2">Naive Approach</h3>
+                <p class="text-text-secondary text-sm leading-relaxed">Polling loop every second → <strong class="text-accent-1">O(n) per second</strong>. Doesn't scale with a large amount of concurrent bookings.</p>
+            </div>
+            <div class="bg-glass-bg backdrop-blur-xl border border-glass-border rounded-xl p-6 hover:-translate-y-1 transition reveal" style="border-left:4px solid var(--color-accent-2);">
+                <div class="text-4xl mb-3">💡</div>
+                <h3 class="font-semibold text-text text-base mb-2">Our Solution</h3>
+                <p class="text-text-secondary text-sm leading-relaxed"><strong class="text-accent-2">Circular Queue</strong> + <strong class="text-accent-2">Hierarchical Timing Wheel</strong> — both not covered in COMP2090SEF.</p>
+            </div>
+        </div>
+        <div class="mt-5 bg-glass-bg border border-glass-border rounded-lg px-6 py-3 flex items-center gap-3 reveal">
+            <span class="text-accent-3 text-xl">📖</span>
+            <p class="text-text-secondary text-sm">Based on Varghese &amp; Lauck (1997) — the same algorithm used in the <strong class="text-accent-1">Linux kernel timer</strong> and <strong class="text-accent-1">Apache Kafka</strong>.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 3: CIRCULAR QUEUE — CONCEPT
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-3" data-slide="3">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:360px;height:360px;top:-70px;left:-70px;background:var(--color-accent-3);opacity:0.09;"></div>
+        <div class="blob" style="width:260px;height:260px;bottom:-50px;right:-50px;background:var(--color-accent-1);opacity:0.07;"></div>
+    </div>
+    <div class="content">
+        <p class="text-accent-3 uppercase tracking-[5px] text-sm font-semibold mb-2 reveal">Data Structure</p>
+        <h2 class="font-display text-[clamp(1.8rem,4vw,2.8rem)] font-bold mb-6 reveal">Circular Queue (Ring Buffer)</h2>
+        <div class="grid grid-cols-2 gap-6 items-start">
+            <!-- Left: Visual diagram -->
+            <div class="reveal">
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5">
+                    <p class="text-text-muted text-xs uppercase tracking-widest mb-4 text-center">Linear Queue vs Circular Queue</p>
+                    <!-- Linear Queue -->
+                    <div class="mb-4">
+                        <p class="text-text-secondary text-xs mb-2 font-mono">Linear Queue — wasted slots ❌</p>
+                        <div class="flex gap-1">
+                            <div style="flex:1;height:36px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.25);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#94a3b8;">empty</div>
+                            <div style="flex:1;height:36px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.25);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#94a3b8;">empty</div>
+                            <div style="flex:1;height:36px;background:rgba(56,189,248,0.2);border:1px solid rgba(56,189,248,0.3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#38bdf8;">B3</div>
+                            <div style="flex:1;height:36px;background:rgba(56,189,248,0.2);border:1px solid rgba(56,189,248,0.3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#38bdf8;">B4</div>
+                            <div style="flex:1;height:36px;background:rgba(56,189,248,0.2);border:1px solid rgba(56,189,248,0.3);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#38bdf8;">B5</div>
+                        </div>
+                        <div class="flex gap-1 mt-1">
+                            <div style="flex:2;text-align:center;font-size:9px;color:#ef4444;">dequeued (wasted)</div>
+                            <div style="flex:3;text-align:center;font-size:9px;color:#38bdf8;">active items</div>
+                        </div>
+                    </div>
+                    <!-- Circular Queue -->
+                    <div>
+                        <p class="text-text-secondary text-xs mb-3 font-mono">Circular Queue — slots recycled ✅</p>
+                        <div class="relative mx-auto" style="width:150px;height:150px;">
+                            <svg viewBox="0 0 150 150" width="150" height="150">
+                                <!-- Ring segments: 8 slots -->
+                                <circle cx="75" cy="75" r="55" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="22"/>
+                                <!-- Active slots -->
+                                <path d="M75,20 A55,55 0 0,1 121,47.5" fill="none" stroke="rgba(56,189,248,0.7)" stroke-width="22" stroke-linecap="butt"/>
+                                <path d="M121,47.5 A55,55 0 0,1 130,75" fill="none" stroke="rgba(56,189,248,0.55)" stroke-width="22" stroke-linecap="butt"/>
+                                <path d="M130,75 A55,55 0 0,1 121,102.5" fill="none" stroke="rgba(56,189,248,0.4)" stroke-width="22" stroke-linecap="butt"/>
+                                <!-- Recycled/free slot with green -->
+                                <path d="M29,47.5 A55,55 0 0,1 75,20" fill="none" stroke="rgba(52,211,153,0.55)" stroke-width="22" stroke-linecap="butt"/>
+                                <!-- Labels -->
+                                <text x="75" y="79" text-anchor="middle" font-size="11" fill="#94a3b8" font-family="Inter">FIFO</text>
+                                <text x="75" y="92" text-anchor="middle" font-size="9" fill="#64748b" font-family="Inter">mod wraparound</text>
+                                <!-- Arrows -->
+                                <text x="75" y="14" text-anchor="middle" font-size="8" fill="#38bdf8" font-family="Inter" font-weight="600">REAR</text>
+                                <text x="75" y="143" text-anchor="middle" font-size="8" fill="#34d399" font-family="Inter" font-weight="600">FRONT (recycled)</text>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Right: Key info -->
+            <div class="space-y-3 reveal">
+                <div class="bg-glass-bg border border-glass-border rounded-lg p-4">
+                    <p class="text-accent-3 text-xs font-semibold uppercase tracking-widest mb-2">Core Idea</p>
+                    <p class="text-text-secondary text-sm leading-relaxed">Rear pointer wraps back to front via <span class="font-mono text-accent-1 text-xs bg-glass-bg px-1.5 py-0.5 rounded">% capacity</span> — empty dequeued slots are recycled.</p>
+                </div>
+                <div class="bg-glass-bg border border-glass-border rounded-lg p-4">
+                    <p class="text-accent-1 text-xs font-semibold uppercase tracking-widest mb-2">4 ADT Operations</p>
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between items-center">
+                            <span class="font-mono text-xs text-accent-1">enqueue(item)</span>
+                            <span class="text-xs text-accent-3 font-bold">O(1)</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="font-mono text-xs text-accent-1">dequeue()</span>
+                            <span class="text-xs text-accent-3 font-bold">O(1)</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="font-mono text-xs text-accent-1">is_empty()</span>
+                            <span class="text-xs text-accent-3 font-bold">O(1)</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="font-mono text-xs text-accent-1">__len__()</span>
+                            <span class="text-xs text-accent-3 font-bold">O(1)</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-glass-bg border border-glass-border rounded-lg p-4">
+                    <p class="text-accent-2 text-xs font-semibold uppercase tracking-widest mb-2">Implementation</p>
+                    <p class="text-text-secondary text-sm">Uses <span class="font-mono text-xs text-accent-1">collections.deque</span> internally. Capacity is <strong>optional</strong> — bounded for wheel slots, unbounded for task buckets.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 4: CIRCULAR QUEUE — REAL WORLD APPS
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-4" data-slide="4">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:350px;height:350px;top:-60px;right:-60px;background:var(--color-accent-3);opacity:0.09;"></div>
+        <div class="blob" style="width:220px;height:220px;bottom:-50px;left:-40px;background:var(--color-accent-2);opacity:0.07;"></div>
+    </div>
+    <div class="content">
+        <p class="text-accent-3 uppercase tracking-[5px] text-sm font-semibold mb-2 reveal">Data Structure</p>
+        <h2 class="font-display text-[clamp(1.8rem,4vw,2.8rem)] font-bold mb-6 reveal">Circular Queue — Applications</h2>
+        <div class="grid grid-cols-2 gap-5">
+            <div class="space-y-4">
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5 hover:-translate-y-1 transition reveal">
+                    <div class="flex gap-4 items-start">
+                        <div class="text-3xl">🖥️</div>
+                        <div>
+                            <h3 class="font-semibold text-text mb-1">CPU Round-Robin Scheduling</h3>
+                            <p class="text-text-secondary text-sm">OS cycles through processes in fixed time slices — wraps back to the first process automatically.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5 hover:-translate-y-1 transition reveal">
+                    <div class="flex gap-4 items-start">
+                        <div class="text-3xl">🌐</div>
+                        <div>
+                            <h3 class="font-semibold text-text mb-1">Network Packet Buffers</h3>
+                            <p class="text-text-secondary text-sm">Routers store incoming packets in a ring buffer — new packets overwrite oldest if buffer is full.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5 hover:-translate-y-1 transition reveal">
+                    <div class="flex gap-4 items-start">
+                        <div class="text-3xl">🎵</div>
+                        <div>
+                            <h3 class="font-semibold text-text mb-1">Audio Streaming Buffers</h3>
+                            <p class="text-text-secondary text-sm">Producer (decoder) and consumer (speaker) share a ring buffer — avoids blocking and dropped frames.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="reveal">
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5 h-full">
+                    <p class="text-accent-1 text-xs uppercase tracking-widest font-semibold mb-4">In Our Project (Task 1)</p>
+                    <svg viewBox="0 0 320 260" width="100%" class="mx-auto">
+                        <!-- Timing Wheel slot box -->
+                        <rect x="10" y="10" width="300" height="50" rx="8" fill="rgba(56,189,248,0.08)" stroke="rgba(56,189,248,0.2)" stroke-width="1"/>
+                        <text x="160" y="30" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="Inter">Hierarchical Timing Wheel</text>
+                        <!-- Slots -->
+                        <rect x="20" y="35" width="38" height="18" rx="3" fill="rgba(56,189,248,0.08)" stroke="rgba(56,189,248,0.15)" stroke-width="1"/>
+                        <text x="39" y="47" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">slot 0</text>
+                        <rect x="63" y="35" width="38" height="18" rx="3" fill="rgba(56,189,248,0.4)" stroke="rgba(56,189,248,0.5)" stroke-width="1"/>
+                        <text x="82" y="47" text-anchor="middle" font-size="8" fill="#38bdf8" font-family="Inter" font-weight="bold">slot 1 ★</text>
+                        <rect x="106" y="35" width="38" height="18" rx="3" fill="rgba(56,189,248,0.08)" stroke="rgba(56,189,248,0.15)" stroke-width="1"/>
+                        <text x="125" y="47" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">slot 2</text>
+                        <text x="160" y="47" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">...</text>
+                        <rect x="215" y="35" width="38" height="18" rx="3" fill="rgba(52,211,153,0.2)" stroke="rgba(52,211,153,0.4)" stroke-width="1"/>
+                        <text x="234" y="47" text-anchor="middle" font-size="8" fill="#34d399" font-family="Inter">slot 59</text>
+
+                        <!-- Arrow down -->
+                        <line x1="82" y1="53" x2="82" y2="78" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrow)"/>
+                        <defs><marker id="arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#38bdf8"/></marker></defs>
+
+                        <!-- CircularQueue at slot 1 -->
+                        <rect x="20" y="80" width="220" height="60" rx="8" fill="rgba(52,211,153,0.06)" stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+                        <text x="130" y="97" text-anchor="middle" font-size="9" fill="#34d399" font-family="Inter" font-weight="bold">CircularQueue (slot 1)</text>
+                        <!-- Queue items -->
+                        <rect x="30" y="103" width="45" height="28" rx="4" fill="rgba(56,189,248,0.15)" stroke="rgba(56,189,248,0.3)" stroke-width="1"/>
+                        <text x="52" y="116" text-anchor="middle" font-size="8" fill="#38bdf8" font-family="Inter">BookingA</text>
+                        <text x="52" y="126" text-anchor="middle" font-size="7" fill="#64748b" font-family="Inter">300s</text>
+                        <rect x="82" y="103" width="45" height="28" rx="4" fill="rgba(56,189,248,0.15)" stroke="rgba(56,189,248,0.3)" stroke-width="1"/>
+                        <text x="104" y="116" text-anchor="middle" font-size="8" fill="#38bdf8" font-family="Inter">BookingC</text>
+                        <text x="104" y="126" text-anchor="middle" font-size="7" fill="#64748b" font-family="Inter">300s</text>
+                        <rect x="134" y="103" width="45" height="28" rx="4" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+                        <text x="156" y="120" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">(empty)</text>
+                        <rect x="186" y="103" width="45" height="28" rx="4" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+                        <text x="208" y="120" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">(empty)</text>
+
+                        <!-- Arrow down -->
+                        <line x1="52" y1="131" x2="52" y2="152" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow2)"/>
+                        <defs><marker id="arrow2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#34d399"/></marker></defs>
+
+                        <!-- Fire expiry -->
+                        <rect x="10" y="155" width="230" height="30" rx="6" fill="rgba(249,115,22,0.15)" stroke="rgba(249,115,22,0.3)" stroke-width="1"/>
+                        <text x="125" y="168" text-anchor="middle" font-size="9" fill="#f97316" font-family="Inter" font-weight="bold">🔥 Booking expires → ticket released</text>
+                        <text x="125" y="180" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="Inter">No scanning — only fires on due tasks</text>
+
+                        <!-- Label: Each slot = CircularQueue -->
+                        <text x="10" y="218" font-size="8" fill="#64748b" font-family="Inter">Each wheel slot holds one CircularQueue</text>
+                        <text x="10" y="230" font-size="8" fill="#64748b" font-family="Inter">→ unbounded so multiple tasks can share same second</text>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 5: HIERARCHICAL TIMING WHEEL — OVERVIEW
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-5" data-slide="5">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:420px;height:420px;top:-100px;right:-90px;background:var(--color-accent-2);opacity:0.11;"></div>
+        <div class="blob" style="width:280px;height:280px;bottom:-70px;left:-50px;background:var(--color-accent-1);opacity:0.08;"></div>
+    </div>
+    <div class="content">
+        <p class="text-accent-2 uppercase tracking-[5px] text-sm font-semibold mb-2 reveal">Algorithm</p>
+        <h2 class="font-display text-[clamp(1.8rem,4vw,2.8rem)] font-bold mb-6 reveal">Hierarchical Timing Wheel</h2>
+        <div class="grid grid-cols-2 gap-6 items-start">
+            <!-- Left: Visual wheel diagram -->
+            <div class="reveal">
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5">
+                    <p class="text-text-muted text-xs text-center uppercase tracking-widest mb-3">Two-level wheel structure</p>
+                    <svg viewBox="0 0 280 260" width="100%" class="mx-auto">
+                        <!-- Minute wheel (outer, slow) -->
+                        <circle cx="140" cy="130" r="100" fill="none" stroke="rgba(129,140,248,0.12)" stroke-width="20"/>
+                        <!-- Minute slots (12 visible) -->
+                        <g opacity="0.5">
+                        <line x1="140" y1="30" x2="140" y2="10" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="189" y1="43" x2="203" y2="26" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="224" y1="81" x2="237" y2="71" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="240" y1="130" x2="260" y2="130" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="224" y1="179" x2="237" y2="189" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="189" y1="217" x2="203" y2="234" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="140" y1="230" x2="140" y2="250" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="91" y1="217" x2="77" y2="234" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="56" y1="179" x2="43" y2="189" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="40" y1="130" x2="20" y2="130" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="56" y1="81" x2="43" y2="71" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        <line x1="91" y1="43" x2="77" y2="26" stroke="rgba(129,140,248,0.3)" stroke-width="1"/>
+                        </g>
+                        <!-- Second wheel (inner, faster) -->
+                        <circle cx="140" cy="130" r="60" fill="none" stroke="rgba(56,189,248,0.12)" stroke-width="18"/>
+                        <!-- Active second slot -->
+                        <path d="M140 72 A58,58 0 0,1 190 101" fill="none" stroke="rgba(56,189,248,0.7)" stroke-width="18" stroke-linecap="butt"/>
+                        <!-- Active minute slot -->
+                        <path d="M140 30 A100,100 0 0,1 207 65" fill="none" stroke="rgba(129,140,248,0.5)" stroke-width="18" stroke-linecap="butt"/>
+                        <!-- Center hub -->
+                        <circle cx="140" cy="130" r="28" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                        <text x="140" y="127" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="Inter">60×60</text>
+                        <text x="140" y="139" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">slots</text>
+                        <!-- Hand (second) -->
+                        <line x1="140" y1="130" x2="165" y2="84" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
+                        <circle cx="165" cy="84" r="4" fill="#38bdf8"/>
+                        <!-- Hand (minute) -->
+                        <line x1="140" y1="130" x2="175" y2="53" stroke="rgba(129,140,248,0.8)" stroke-width="2" stroke-linecap="round"/>
+                        <circle cx="175" cy="53" r="3.5" fill="rgba(129,140,248,0.9)"/>
+                        <!-- Labels -->
+                        <text x="140" y="7" text-anchor="middle" font-size="8" fill="#818cf8" font-family="Inter" font-weight="600">Minute Wheel (60 slots)</text>
+                        <text x="140" y="194" text-anchor="middle" font-size="8" fill="#38bdf8" font-family="Inter" font-weight="600">Second Wheel (60 slots)</text>
+                        <!-- Cascade arrow -->
+                        <path d="M155,88 Q170,110 160,120" fill="none" stroke="rgba(52,211,153,0.7)" stroke-width="1.5" stroke-dasharray="3,2"/>
+                        <circle cx="160" cy="120" r="3" fill="#34d399"/>
+                        <text x="168" y="115" font-size="7" fill="#34d399" font-family="Inter">cascade</text>
+                    </svg>
+                </div>
+            </div>
+            <!-- Right: Explanation -->
+            <div class="space-y-3 reveal">
+                <div class="bg-glass-bg border border-glass-border rounded-lg p-4">
+                    <p class="text-accent-2 text-xs font-semibold uppercase tracking-widest mb-2">How It Works</p>
+                    <ul class="space-y-2 text-sm text-text-secondary">
+                        <li class="flex gap-2"><span class="text-accent-1 font-bold shrink-0">1.</span>Call <span class="font-mono text-xs text-accent-1 bg-glass-bg px-1 rounded">schedule(item, delay_s)</span></li>
+                        <li class="flex gap-2"><span class="text-accent-1 font-bold shrink-0">2.</span>delay &lt; 60s → second wheel slot <span class="font-mono text-xs text-accent-3">(hand+delay)%60</span></li>
+                        <li class="flex gap-2"><span class="text-accent-1 font-bold shrink-0">3.</span>delay ≥ 60s → minute wheel slot <span class="font-mono text-xs text-accent-3">(hand+delay÷60)%60</span></li>
+                        <li class="flex gap-2"><span class="text-accent-1 font-bold shrink-0">4.</span><span class="font-mono text-xs text-accent-1">_tick()</span> fires tasks in current second bucket</li>
+                        <li class="flex gap-2"><span class="text-accent-1 font-bold shrink-0">5.</span>On full rotation → <span class="font-mono text-xs text-accent-2">_cascade_minute_slot()</span> moves minute tasks down</li>
+                    </ul>
+                </div>
+                <div class="bg-glass-bg border border-glass-border rounded-lg p-4">
+                    <p class="text-accent-3 text-xs font-semibold uppercase tracking-widest mb-2">Real-World Usage</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="text-xs bg-glass-bg border border-glass-border px-2.5 py-1 rounded-full text-text-secondary">Linux kernel timer</span>
+                        <span class="text-xs bg-glass-bg border border-glass-border px-2.5 py-1 rounded-full text-text-secondary">Apache Kafka DelayQueue</span>
+                        <span class="text-xs bg-glass-bg border border-glass-border px-2.5 py-1 rounded-full text-text-secondary">Network timeout mgmt</span>
+                    </div>
+                </div>
+                <div class="bg-glass-bg border border-glass-border rounded-lg p-4">
+                    <p class="text-accent-1 text-xs font-semibold uppercase tracking-widest mb-1">Key Edge Case</p>
+                    <p class="text-text-secondary text-sm">System idle for 90s? <span class="font-mono text-xs text-accent-2">advance_to_now()</span> uses an elapsed-tick loop to replay all missed seconds — we got this wrong the first time.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 6: TIME COMPLEXITY COMPARISON
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-6" data-slide="6">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:380px;height:380px;top:-70px;right:-70px;background:var(--color-accent-1);opacity:0.09;"></div>
+        <div class="blob" style="width:260px;height:260px;bottom:-60px;left:-50px;background:var(--color-accent-3);opacity:0.07;"></div>
+    </div>
+    <div class="content">
+        <p class="text-accent-1 uppercase tracking-[5px] text-sm font-semibold mb-2 reveal">Performance</p>
+        <h2 class="font-display text-[clamp(1.8rem,4vw,2.8rem)] font-bold mb-6 reveal">Time Complexity Analysis</h2>
+        <div class="grid grid-cols-2 gap-6">
+            <!-- Bar chart: complexity comparison -->
+            <div class="reveal">
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5">
+                    <p class="text-text-muted text-xs uppercase tracking-widest mb-4 text-center">Operations per insertion (n timers)</p>
+                    <!-- Horizontal bars -->
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-text-secondary">Polling Loop (O(n))</span>
+                                <span class="text-red-400 font-bold">O(n)</span>
+                            </div>
+                            <div class="h-7 rounded-md bg-glass-bg relative overflow-hidden" style="border:1px solid rgba(255,255,255,0.06)">
+                                <div class="bar-fill h-full rounded-md" data-width="95" style="width:0%;background:linear-gradient(90deg,rgba(239,68,68,0.7),rgba(239,68,68,0.4));"></div>
+                                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-red-400 font-bold">Terrible at scale</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-text-secondary">Min-Heap (O(log n))</span>
+                                <span class="text-yellow-400 font-bold">O(log n)</span>
+                            </div>
+                            <div class="h-7 rounded-md bg-glass-bg relative overflow-hidden" style="border:1px solid rgba(255,255,255,0.06)">
+                                <div class="bar-fill h-full rounded-md" data-width="50" style="width:0%;background:linear-gradient(90deg,rgba(250,204,21,0.7),rgba(250,204,21,0.4));"></div>
+                                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-yellow-400 font-bold">Better, but grows</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-text-secondary font-semibold">Timing Wheel (O(1) amortised)</span>
+                                <span class="text-accent-3 font-bold">O(1)</span>
+                            </div>
+                            <div class="h-7 rounded-md bg-glass-bg relative overflow-hidden" style="border:1px solid rgba(52,211,153,0.2)">
+                                <div class="bar-fill h-full rounded-md" data-width="12" style="width:0%;background:linear-gradient(90deg,rgba(52,211,153,0.8),rgba(52,211,153,0.5));box-shadow:0 0 10px rgba(52,211,153,0.3)"></div>
+                                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-accent-3 font-bold">✓ Scales perfectly</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-text-muted text-xs text-center mt-4">Lower bar = fewer operations per insert</p>
+                </div>
+            </div>
+            <!-- Operation table -->
+            <div class="reveal">
+                <div class="bg-glass-bg border border-glass-border rounded-xl p-5">
+                    <p class="text-text-muted text-xs uppercase tracking-widest mb-4 text-center">Our Timing Wheel — per operation</p>
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-3 gap-2 pb-2 border-b border-glass-border">
+                            <span class="text-xs text-text-muted font-semibold uppercase">Operation</span>
+                            <span class="text-xs text-text-muted font-semibold uppercase text-center">Complexity</span>
+                            <span class="text-xs text-text-muted font-semibold uppercase">Notes</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 py-1.5">
+                            <span class="font-mono text-xs text-accent-1">schedule()</span>
+                            <span class="text-xs text-accent-3 font-bold text-center">O(1)</span>
+                            <span class="text-xs text-text-secondary">Slot via modulo</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 py-1.5">
+                            <span class="font-mono text-xs text-accent-1">_tick()</span>
+                            <span class="text-xs text-accent-3 font-bold text-center">O(k)</span>
+                            <span class="text-xs text-text-secondary">k tasks in that bucket</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 py-1.5">
+                            <span class="font-mono text-xs text-accent-1">_cascade()</span>
+                            <span class="text-xs text-yellow-400 font-bold text-center">O(m)</span>
+                            <span class="text-xs text-text-secondary">m tasks; once/minute</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 py-1.5">
+                            <span class="font-mono text-xs text-accent-1">advance_to_now()</span>
+                            <span class="text-xs text-accent-3 font-bold text-center">O(elapsed)</span>
+                            <span class="text-xs text-text-secondary">Indep. of total timers</span>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-glass-border">
+                            <p class="text-xs text-text-secondary"><span class="text-accent-2 font-semibold">Key insight:</span> Cost depends only on tasks <em>due now</em>, not total timers in the system. A busy system with 100,000 pending timers costs the same as one with 10.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 7: TICKET BOOKING — HOW IT ALL CONNECTS
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-7" data-slide="7">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:380px;height:380px;top:-80px;left:-60px;background:var(--color-accent-3);opacity:0.10;"></div>
+        <div class="blob" style="width:260px;height:260px;bottom:-50px;right:-50px;background:var(--color-accent-2);opacity:0.08;"></div>
+    </div>
+    <div class="content">
+        <p class="text-accent-3 uppercase tracking-[5px] text-sm font-semibold mb-2 reveal">Connection to Task 1</p>
+        <h2 class="font-display text-[clamp(1.8rem,4vw,2.8rem)] font-bold mb-6 reveal">Booking Expiry — End to End</h2>
+        <div class="reveal">
+            <div class="bg-glass-bg border border-glass-border rounded-xl p-6">
+                <p class="text-text-muted text-xs uppercase tracking-widest mb-4 text-center">Timeline: Booking B001 created at T=0, delay=300s</p>
+                <svg viewBox="0 0 950 160" width="100%">
+                    <!-- Timeline line -->
+                    <line x1="40" y1="80" x2="910" y2="80" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+                    <!-- Node 1: Booking created -->
+                    <circle cx="80" cy="80" r="14" fill="rgba(56,189,248,0.2)" stroke="#38bdf8" stroke-width="2"/>
+                    <text x="80" y="84" text-anchor="middle" font-size="9" fill="#38bdf8" font-family="Inter" font-weight="bold">T=0</text>
+                    <text x="80" y="107" text-anchor="middle" font-size="8.5" fill="#94a3b8" font-family="Inter">Booking</text>
+                    <text x="80" y="118" text-anchor="middle" font-size="8.5" fill="#94a3b8" font-family="Inter">Created</text>
+                    <!-- Arrow -->
+                    <line x1="94" y1="80" x2="190" y2="80" stroke="rgba(56,189,248,0.4)" stroke-width="1.5" stroke-dasharray="4,3"/>
+                    <!-- Node 2: schedule() -->
+                    <rect x="200" y="58" width="110" height="44" rx="8" fill="rgba(56,189,248,0.1)" stroke="rgba(56,189,248,0.3)" stroke-width="1.5"/>
+                    <text x="255" y="77" text-anchor="middle" font-size="9" fill="#38bdf8" font-family="Inter" font-weight="bold">schedule(B001, 300)</text>
+                    <text x="255" y="90" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">Timing Wheel → minute slot 5</text>
+                    <!-- Arrow -->
+                    <line x1="310" y1="80" x2="390" y2="80" stroke="rgba(129,140,248,0.4)" stroke-width="1.5" stroke-dasharray="4,3"/>
+                    <!-- Node 3: Minute wheel wait -->
+                    <rect x="400" y="58" width="110" height="44" rx="8" fill="rgba(129,140,248,0.08)" stroke="rgba(129,140,248,0.25)" stroke-width="1.5"/>
+                    <text x="455" y="77" text-anchor="middle" font-size="9" fill="#818cf8" font-family="Inter" font-weight="bold">T = 0→240s</text>
+                    <text x="455" y="90" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">Sitting in minute wheel</text>
+                    <!-- Arrow -->
+                    <line x1="510" y1="80" x2="590" y2="80" stroke="rgba(52,211,153,0.4)" stroke-width="1.5" stroke-dasharray="4,3"/>
+                    <!-- Node 4: Cascade -->
+                    <rect x="600" y="58" width="110" height="44" rx="8" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.3)" stroke-width="1.5"/>
+                    <text x="655" y="77" text-anchor="middle" font-size="9" fill="#34d399" font-family="Inter" font-weight="bold">T = 240s</text>
+                    <text x="655" y="90" text-anchor="middle" font-size="8" fill="#64748b" font-family="Inter">Cascade → second wheel</text>
+                    <!-- Arrow -->
+                    <line x1="710" y1="80" x2="790" y2="80" stroke="rgba(249,115,22,0.5)" stroke-width="1.5" stroke-dasharray="4,3"/>
+                    <!-- Node 5: Expire -->
+                    <circle cx="830" cy="80" r="22" fill="rgba(249,115,22,0.2)" stroke="#f97316" stroke-width="2"/>
+                    <text x="830" y="76" text-anchor="middle" font-size="9" fill="#f97316" font-family="Inter" font-weight="bold">T=300s</text>
+                    <text x="830" y="88" text-anchor="middle" font-size="8.5" fill="#f97316" font-family="Inter">🔥 FIRE</text>
+                    <text x="830" y="113" text-anchor="middle" font-size="8.5" fill="#94a3b8" font-family="Inter">Booking expired</text>
+                    <text x="830" y="124" text-anchor="middle" font-size="8.5" fill="#94a3b8" font-family="Inter">Ticket released</text>
+                    <!-- No scanning label -->
+                    <rect x="350" y="18" width="250" height="24" rx="5" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+                    <text x="475" y="33" text-anchor="middle" font-size="8.5" fill="#34d399" font-family="Inter">✓ Zero polling. Zero scanning. O(1) scheduling.</text>
+                </svg>
+            </div>
+        </div>
+        <div class="grid grid-cols-3 gap-4 mt-4">
+            <div class="bg-glass-bg border border-glass-border rounded-lg p-4 reveal" style="border-left:3px solid var(--color-accent-1)">
+                <p class="text-accent-1 text-xs font-semibold mb-1">Before</p>
+                <p class="text-text-secondary text-sm">O(n) polling every second — checking <em>all</em> bookings</p>
+            </div>
+            <div class="bg-glass-bg border border-glass-border rounded-lg p-4 reveal" style="border-left:3px solid var(--color-accent-3)">
+                <p class="text-accent-3 text-xs font-semibold mb-1">After</p>
+                <p class="text-text-secondary text-sm">O(1) schedule at creation — fires only on due tasks</p>
+            </div>
+            <div class="bg-glass-bg border border-glass-border rounded-lg p-4 reveal" style="border-left:3px solid var(--color-accent-2)">
+                <p class="text-accent-2 text-xs font-semibold mb-1">Result</p>
+                <p class="text-text-secondary text-sm">1,000 concurrent bookings costs the same as 10</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 8: THANK YOU
+══════════════════════════════════════════════════════ -->
+<div class="slide slide-8" data-slide="8">
+    <div class="gradient-mesh">
+        <div class="blob" style="width:500px;height:500px;top:-120px;right:-100px;background:var(--color-accent-1);opacity:0.14;"></div>
+        <div class="blob" style="width:320px;height:320px;bottom:-80px;left:-70px;background:var(--color-accent-2);opacity:0.12;"></div>
+        <div class="blob" style="width:220px;height:220px;top:40%;left:12%;background:var(--color-accent-3);opacity:0.10;"></div>
+    </div>
+    <canvas class="particle-canvas" style="position:absolute;inset:0;z-index:1;"></canvas>
+    <div class="content text-center">
+        <div class="text-[80px] mb-4 animate-[float_3s_ease-in-out_infinite] reveal">🎯</div>
+        <h1 class="font-display text-[clamp(2.2rem,5vw,4rem)] font-black bg-linear-to-br from-accent-1 via-accent-2 to-accent-1 bg-clip-text text-transparent tracking-tight mb-5 reveal">
+            Summary
+        </h1>
+        <div class="grid grid-cols-2 gap-4 max-w-2xl mx-auto mb-6">
+            <div class="bg-glass-bg border border-glass-border rounded-xl p-4 reveal" style="border-top:2px solid var(--color-accent-3)">
+                <p class="text-accent-3 text-xs font-semibold uppercase tracking-widest mb-2">Circular Queue</p>
+                <p class="text-text-secondary text-sm">Space-efficient FIFO via modulo wraparound — O(1) enqueue &amp; dequeue using <span class="font-mono text-xs">collections.deque</span></p>
+            </div>
+            <div class="bg-glass-bg border border-glass-border rounded-xl p-4 reveal" style="border-top:2px solid var(--color-accent-1)">
+                <p class="text-accent-1 text-xs font-semibold uppercase tracking-widest mb-2">Hierarchical Timing Wheel</p>
+                <p class="text-text-secondary text-sm">O(1) amortised timer scheduling across 60×60 slot dual-wheel — inspired by Linux kernel &amp; Kafka</p>
+            </div>
+        </div>
+        <p class="text-text-muted text-sm tracking-[4px] uppercase reveal">
+            Group 103 · COMP2090SEF · HKMU 2026
+        </p>
+        <p class="text-text-muted text-xs mt-2 reveal">
+            Source: <span class="font-mono text-accent-2">github.com/SeriouSirius/COMP2090SEF_Project</span>
+        </p>
+    </div>
+</div>
+
+</div><!-- end .deck -->
+
+<!-- NAV CONTROLS -->
+<div class="nav-controls">
+    <button class="nav-btn" onclick="changeSlide(-1)">&#8249;</button>
+    <div class="slide-dots" id="dots"></div>
+    <button class="nav-btn" onclick="changeSlide(1)">&#8250;</button>
+    <span class="slide-counter" id="counter">1 / 8</span>
+</div>
+
+<script>
+    let current = 1;
+    const total = document.querySelectorAll('.slide').length;
+    const dotsContainer = document.getElementById('dots');
+    const counter = document.getElementById('counter');
+    for (let i = 1; i <= total; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'dot' + (i === 1 ? ' active' : '');
+        dot.onclick = () => goToSlide(i);
+        dotsContainer.appendChild(dot);
+    }
+    function goToSlide(n) {
+        const prev = document.querySelector('.slide.active');
+        const next = document.querySelector(`.slide[data-slide="${n}"]`);
+        if (prev) prev.classList.remove('active');
+        if (next) { next.classList.add('active'); animateSlide(next); }
+        current = n; updateNav();
+    }
+    function changeSlide(dir) { let n = current + dir; if (n < 1) n = total; if (n > total) n = 1; goToSlide(n); }
+    function updateNav() {
+        document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i + 1 === current));
+        counter.textContent = current + ' / ' + total;
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); changeSlide(1); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); changeSlide(-1); }
+    });
+    let touchStartX = 0;
+    document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+    document.addEventListener('touchend', e => { const diff = touchStartX - e.changedTouches[0].clientX; if (Math.abs(diff) > 50) changeSlide(diff > 0 ? 1 : -1); });
+
+    function animateSlide(slide) {
+        slide.querySelectorAll('.reveal').forEach((el, i) => {
+            el.style.transition = 'none';
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            el.offsetHeight;
+            const delay = i * 0.08;
+            el.style.transition = `opacity 0.35s ease ${delay}s, transform 0.35s ease ${delay}s`;
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0px)';
+        });
+        animateSlideEffects(slide);
+    }
+
+    function animateSlideEffects(slide) {
+        slide.querySelectorAll('.bar-fill:not(.fill-init)').forEach((bar, i) => {
+            bar.classList.add('fill-init');
+            bar.style.width = '0%';
+            bar.style.transition = `width 0.6s ease ${i * 0.1}s`;
+            bar.offsetHeight;
+            bar.style.width = bar.dataset.width + '%';
+        });
+        slide.querySelectorAll('[data-count]:not(.counted)').forEach(el => {
+            el.classList.add('counted');
+            const target = parseInt(el.dataset.count);
+            const suffix = el.dataset.suffix || '', prefix = el.dataset.prefix || '';
+            let cur = 0; const step = target / 40;
+            const timer = setInterval(() => { cur += step; if (cur >= target) { cur = target; clearInterval(timer); } el.textContent = prefix + Math.round(cur).toLocaleString() + suffix; }, 30);
+        });
+    }
+
+    /* Mouse Spotlight */
+    document.addEventListener('mousemove', (e) => {
+        const spotlight = document.querySelector('.mouse-spotlight');
+        if (spotlight) spotlight.style.background = `radial-gradient(600px circle at ${e.clientX}px ${e.clientY}px, rgba(56,189,248,0.05), transparent 40%)`;
+    });
+
+    /* Particle Canvas */
+    window.initParticles = function(canvas, options) {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
+        const count = options.count || 55;
+        const interactive = options.interactive !== false;
+        let mx = -1000, my = -1000;
+        const particles = Array.from({ length: count }, () => ({
+            x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+            vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
+            size: Math.random() * 2.5 + 0.8, alpha: Math.random() * 0.35 + 0.1
+        }));
+        if (interactive) {
+            canvas.addEventListener('mousemove', e => { const r = canvas.getBoundingClientRect(); mx = e.clientX - r.left; my = e.clientY - r.top; });
+            canvas.addEventListener('mouseleave', () => { mx = -1000; my = -1000; });
+        }
+        (function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                if (interactive) { const dx = p.x - mx, dy = p.y - my, dist = Math.sqrt(dx*dx+dy*dy); if (dist < 120) { const f = (120-dist)/120*2; p.vx += (dx/dist)*f*0.1; p.vy += (dy/dist)*f*0.1; } }
+                p.vx *= 0.98; p.vy *= 0.98; p.x += p.vx; p.y += p.vy;
+                if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0;
+                if (p.y < 0) p.y = canvas.height; if (p.y > canvas.height) p.y = 0;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(56,189,248,${p.alpha})`; ctx.fill();
+            });
+            requestAnimationFrame(animate);
+        })();
+    };
+    document.querySelectorAll('.particle-canvas').forEach(c => window.initParticles(c, { interactive: true, count: 55 }));
+
+    try { animateSlide(document.querySelector('.slide.active')); } catch(e) {}
+</script>
+</body>
+</html>
