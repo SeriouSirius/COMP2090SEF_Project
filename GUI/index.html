@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Ticket Selling System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="ambient-shape shape-a"></div>
+    <div class="ambient-shape shape-b"></div>
+    <div class="app-shell">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">COMP2090 Ticketing</p>
+                <h1>Event Ticket Selling System</h1>
+            </div>
+            <div id="user-summary" class="user-summary">Not logged in</div>
+        </header>
+
+        <main class="panel-grid">
+            <section id="auth-panel" class="panel"></section>
+            <section id="menu-panel" class="panel hidden"></section>
+            <section id="content-panel" class="panel hidden"></section>
+        </main>
+
+        <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="script.js" defer></script>
+</body>
+</html>
