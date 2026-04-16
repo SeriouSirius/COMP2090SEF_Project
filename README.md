@@ -11,6 +11,10 @@ Preliminary code for both tasks.
 - Current: simple OOP ticket selling CLI with sample events and stock management
 - Run: `cd Task_1 && python main.py`
 
+Task 1 Introduction Video: https://youtu.be/6f_XkNm8xi8
+
+https://github.com/user-attachments/assets/120718f5-0c87-4fe8-9656-cfb7257acba1
+
 ## Task 2: Self-study Data Structure + Algorithm
 - Folder: `Task_2/`
 - Preliminary: Circular Queue + Hierarchical Timing Wheels implementations  
