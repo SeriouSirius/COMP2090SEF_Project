@@ -6,10 +6,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from Task_1.build_db import DATABASE_PATH, DatabaseManager, hash_password
+from Task_1.build_db import DB_path, DB, hash_pwd
 from Task_2.algorithm_data_structure import HierarchicalTimingWheel
 
-PAYMENT_WINDOW_SECONDS = 300  # 5 minutes
+
+PAYMENT_WINDOW_SECONDS = 300
 
 
 class User:
@@ -26,10 +27,7 @@ class Event:
         self.title = title
         self.description = description
         self.location = location
-        if isinstance(event_date, str):
-            self.event_date = datetime.fromisoformat(event_date.replace(" ", "T"))
-        else:
-            self.event_date = event_date
+        self.event_date = event_date
 
 
 class TicketType:
@@ -42,8 +40,7 @@ class TicketType:
 
 
 class Booking:
-    def __init__(self, booking_id, user_id, event_id, ticket_type_id, quantity,
-                 total_price, status, expires_at, created_at=None):
+    def __init__(self, booking_id, user_id, event_id, ticket_type_id, quantity, total_price, status, expire_time):
         self.booking_id = booking_id
         self.user_id = user_id
         self.event_id = event_id
@@ -51,41 +48,70 @@ class Booking:
         self.quantity = quantity
         self.total_price = total_price
         self.status = status
-        self.expires_at = expires_at
-        self.created_at = created_at
+        self.expire_time = expire_time
 
 
-class AuthService:
-    def __init__(self, database):
-        self.database = database
+class Authsys:
+    def __init__(self, db):
+        self.db = db
 
-    def register(self, username, password):
-        if self.database.fetchone("SELECT id FROM users WHERE username = ?", (username,)):
+    def register(self, username, pwd, payment_pin):
+        # check if user already exists
+        if self.db.fetchone("SELECT id FROM users WHERE username = ?", (username,)):
             return None, "Username already exists"
 
-        password_hash = self._hash_password(password)
-        cursor = self.database.execute(
-            "INSERT INTO users (username, password_hash, balance, is_admin) VALUES (?, ?, ?, ?)",
-            (username, password_hash, 0.0, 0),
+        if not payment_pin or not payment_pin.isdigit() or len(payment_pin) != 4:
+            return None, "Payment PIN must be exactly 4 digits"
+
+        pwdHash = self.hash_pwd(pwd)
+        paymentPinHash = self.hash_pwd(payment_pin)
+        cursor = self.db.execute(
+            "INSERT INTO users (username, pwd_hash, payment_pin_hash, balance, is_admin) VALUES (?, ?, ?, ?, ?)",
+            (username, pwdHash, paymentPinHash, 0.0, 0),
         )
+        print(f"new user registered: {username}")
         return self.get_user_by_id(cursor.lastrowid), "Register success"
 
-    def login(self, username, password):
-        row = self.database.fetchone("SELECT * FROM users WHERE username = ?", (username,))
+    def login(self, username, pwd):
+        row = self.db.fetchone("SELECT * FROM users WHERE username = ?", (username,))
         if row is None:
             return None, "User not found"
 
-        if row["password_hash"] != self._hash_password(password):
+        pwdHash = self.hash_pwd(pwd)
+        # TODO: maybe add login attempt limit later
+        if row["pwd_hash"] != pwdHash:
             return None, "Wrong password"
 
+        print(f"user {username} logged in")
         return self._row_to_user(row), "Login success"
 
     def get_user_by_id(self, user_id):
-        row = self.database.fetchone("SELECT * FROM users WHERE id = ?", (user_id,))
-        return self._row_to_user(row) if row else None
+        row = self.db.fetchone("SELECT * FROM users WHERE id = ?", (user_id,))
+        if row is None:
+            return None
+        return self._row_to_user(row)
 
-    def _hash_password(self, password):
-        return hash_password(password)
+    def verify_payment_pin(self, user_id, payment_pin):
+        if not payment_pin:
+            return False, "Payment PIN is required"
+        if not payment_pin.isdigit() or len(payment_pin) != 4:
+            return False, "Payment PIN must be exactly 4 digits"
+
+        row = self.db.fetchone(
+            "SELECT payment_pin_hash FROM users WHERE id = ?",
+            (user_id,),
+        )
+        if row is None:
+            return False, "User not found"
+        if not row["payment_pin_hash"]:
+            return False, "Payment PIN is not set for this user"
+
+        if row["payment_pin_hash"] != self.hash_pwd(payment_pin):
+            return False, "Payment PIN is incorrect"
+        return True, "Payment PIN verified"
+
+    def hash_pwd(self, pwd):
+        return hash_pwd(pwd)
 
     def _row_to_user(self, row):
         return User(
@@ -96,47 +122,46 @@ class AuthService:
         )
 
 
-class EventService:
-    def __init__(self, database):
-        self.database = database
+class Event_sys:
+    def __init__(self, db):
+        self.db = db
 
     def list_events(self):
-        """Keep original name for CLI compatibility - shows upcoming events only"""
-        now = datetime.now().isoformat()
-        rows = self.database.fetchall(
-            "SELECT * FROM events WHERE event_date > ? ORDER BY event_date, title",
-            (now,)
-        )
+        rows = self.db.fetchall("SELECT * FROM events ORDER BY event_date, title")
         return [self._row_to_event(row) for row in rows]
 
     def get_event(self, event_id):
-        row = self.database.fetchone("SELECT * FROM events WHERE id = ?", (event_id,))
-        return self._row_to_event(row) if row else None
+        row = self.db.fetchone("SELECT * FROM events WHERE id = ?", (event_id,))
+        if row is None:
+            return None
+        return self._row_to_event(row)
 
     def get_ticket_types(self, event_id):
-        rows = self.database.fetchall(
+        rows = self.db.fetchall(
             "SELECT * FROM ticket_types WHERE event_id = ? ORDER BY id",
-            (event_id,)
+            (event_id,),
         )
         return [
-            TicketType(row["id"], row["event_id"], row["name"], row["price"], row["stock"])
+            TicketType(
+                row["id"],
+                row["event_id"],
+                row["name"],
+                row["price"],
+                row["stock"],
+            )
             for row in rows
         ]
 
     def add_event(self, title, description, location, event_date):
-        if not all([title, description, location, event_date]):
-            raise ValueError("All fields are required")
-
-        cursor = self.database.execute(
+        cursor = self.db.execute(
             "INSERT INTO events (title, description, location, event_date) VALUES (?, ?, ?, ?)",
             (title, description, location, event_date),
         )
+        print("event added, id =", cursor.lastrowid)
         return cursor.lastrowid
 
     def add_ticket_type(self, event_id, name, price, stock):
-        if price <= 0 or stock < 0:
-            raise ValueError("Price must be > 0 and stock >= 0")
-        self.database.execute(
+        self.db.execute(
             "INSERT INTO ticket_types (event_id, name, price, stock) VALUES (?, ?, ?, ?)",
             (event_id, name, price, stock),
         )
@@ -151,59 +176,59 @@ class EventService:
         )
 
 
-class BalanceService:
-    def __init__(self, database, auth_service):
-        self.database = database
-        self.auth_service = auth_service
+class Balance_sys:
+    def __init__(self, db, auth_sys):
+        self.db = db
+        self.auth_sys = auth_sys
 
     def get_balance(self, user_id):
-        row = self.database.fetchone("SELECT balance FROM users WHERE id = ?", (user_id,))
+        row = self.db.fetchone("SELECT balance FROM users WHERE id = ?", (user_id,))
         return row["balance"] if row else 0.0
 
     def add_balance(self, user_id, amount):
-        if amount <= 0:
-            raise ValueError("Amount must be greater than 0")
-        current = self.get_balance(user_id)
-        new_balance = current + amount
-        self.database.execute(
+        currentBalance = self.get_balance(user_id)
+        new_balance = currentBalance + amount
+        self.db.execute(
             "UPDATE users SET balance = ? WHERE id = ?",
             (new_balance, user_id),
         )
         return new_balance
 
     def deduct_balance(self, user_id, amount):
-        current = self.get_balance(user_id)
-        if current < amount:
-            return False, current
-        new_balance = current - amount
-        self.database.execute(
+        currentBalance = self.get_balance(user_id)
+        if currentBalance < amount:
+            return False, currentBalance
+
+        new_balance = currentBalance - amount
+        self.db.execute(
             "UPDATE users SET balance = ? WHERE id = ?",
             (new_balance, user_id),
         )
         return True, new_balance
 
 
-class BookingService:
-    def __init__(self, database, event_service, balance_service):
-        self.database = database
-        self.event_service = event_service
-        self.balance_service = balance_service
+class Booking_sys:
+    def __init__(self, db, event_sys, balance_sys, auth_sys):
+        self.db = db
+        self.event_sys = event_sys
+        self.balance_sys = balance_sys
+        self.auth_sys = auth_sys
         self.timing_wheel = HierarchicalTimingWheel()
         self.pending_booking_ids = set()
-        self._load_pending_bookings()
+        self.load_pending_bookings()
 
-    def _load_pending_bookings(self):
-        rows = self.database.fetchall(
-            "SELECT id, expires_at FROM bookings WHERE status = 'pending'"
+    def load_pending_bookings(self):
+        rows = self.db.fetchall(
+            "SELECT id, expire_time FROM bookings WHERE status = 'pending'"
         )
-        now = datetime.now()
+        current_time = datetime.now()
         for row in rows:
-            expires_at = datetime.fromisoformat(row["expires_at"])
-            remaining = int((expires_at - now).total_seconds())
-            if remaining <= 0:
+            expireTime = datetime.fromisoformat(row["expire_time"])
+            remaining_seconds = int((expireTime - current_time).total_seconds())
+            if remaining_seconds <= 0:
                 self.expire_booking(row["id"])
             else:
-                self.timing_wheel.schedule(row["id"], remaining)
+                self.timing_wheel.schedule(row["id"], remaining_seconds)
                 self.pending_booking_ids.add(row["id"])
 
     def process_expired_bookings(self):
@@ -213,67 +238,50 @@ class BookingService:
                 self.expire_booking(booking_id)
 
     def create_booking(self, user_id, event_id, ticket_type_id, quantity):
-        # Prevent booking past events
-        event = self.event_service.get_event(event_id)
-        if event and event.event_date <= datetime.now():
-            return None, "Cannot book tickets for past or ongoing events"
-
-        ticket_row = self.database.fetchone(
+        ticketRow = self.db.fetchone(
             "SELECT * FROM ticket_types WHERE id = ? AND event_id = ?",
             (ticket_type_id, event_id),
         )
-        if ticket_row is None:
+        if ticketRow is None:
             return None, "Ticket type not found"
 
         if quantity <= 0:
             return None, "Quantity must be greater than 0"
 
-        if ticket_row["stock"] < quantity:
+        if ticketRow["stock"] < quantity:
             return None, "Not enough ticket stock"
 
-        total_price = ticket_row["price"] * quantity
+        total_price = ticketRow["price"] * quantity
+        self.db.execute(
+            "UPDATE ticket_types SET stock = stock - ? WHERE id = ?",
+            (quantity, ticket_type_id),
+        )
 
-        # Atomic Transaction (Critical Fix)
-        try:
-            self.database.connection.execute("BEGIN TRANSACTION")
+        # calc expire time, 5 min window
+        expireTime = datetime.now().timestamp() + PAYMENT_WINDOW_SECONDS
+        expire_time_text = datetime.fromtimestamp(expireTime).isoformat(timespec="seconds")
+        cursor = self.db.execute(
+            """
+            INSERT INTO bookings (user_id, event_id, ticket_type_id, quantity, total_price, status, expire_time, created_time)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+            """,
+            (
+                user_id,
+                event_id,
+                ticket_type_id,
+                quantity,
+                total_price,
+                expire_time_text,
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+        booking_id = cursor.lastrowid
+        self.timing_wheel.schedule(booking_id, PAYMENT_WINDOW_SECONDS)
+        self.pending_booking_ids.add(booking_id)
+        print(f"booking created: id={booking_id}, total={total_price}")
+        return self.get_booking(booking_id), "Booking created. Please pay in 5 minutes."
 
-            self.database.execute(
-                "UPDATE ticket_types SET stock = stock - ? WHERE id = ?",
-                (quantity, ticket_type_id),
-            )
-
-            expires_at_ts = datetime.now().timestamp() + PAYMENT_WINDOW_SECONDS
-            expires_at_text = datetime.fromtimestamp(expires_at_ts).isoformat(timespec="seconds")
-
-            cursor = self.database.execute(
-                """
-                INSERT INTO bookings 
-                (user_id, event_id, ticket_type_id, quantity, total_price, status, expires_at, created_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-                """,
-                (
-                    user_id, event_id, ticket_type_id, quantity, total_price,
-                    expires_at_text, datetime.now().isoformat(timespec="seconds")
-                ),
-            )
-            booking_id = cursor.lastrowid
-
-            self.database.connection.commit()
-
-            self.timing_wheel.schedule(booking_id, PAYMENT_WINDOW_SECONDS)
-            self.pending_booking_ids.add(booking_id)
-
-            return self.get_booking(booking_id), "Booking created. Please pay within 5 minutes."
-
-        except Exception as e:
-            self.database.connection.rollback()
-            self.database.execute(
-                "UPDATE ticket_types SET stock = stock + ? WHERE id = ?",
-                (quantity, ticket_type_id),
-            )
-            return None, f"Failed to create booking: {str(e)}"
-
-    def pay_booking(self, booking_id, user_id):
+    def pay_booking(self, booking_id, user_id, payment_pin):
         booking = self.get_booking(booking_id)
         if booking is None or booking.user_id != user_id:
             return False, "Booking not found"
@@ -281,39 +289,44 @@ class BookingService:
         if booking.status != "pending":
             return False, f"Booking status is {booking.status}"
 
-        if datetime.now() > datetime.fromisoformat(booking.expires_at):
+        pin_ok, pin_message = self.auth_sys.verify_payment_pin(user_id, payment_pin)
+        if not pin_ok:
+            return False, pin_message
+
+        if datetime.now() > datetime.fromisoformat(booking.expire_time):
             self.expire_booking(booking.booking_id)
             return False, "Payment time is over"
 
-        success, new_balance = self.balance_service.deduct_balance(user_id, booking.total_price)
+        success, balance = self.balance_sys.deduct_balance(user_id, booking.total_price)
         if not success:
             return False, "Balance not enough to pay"
 
-        self.database.execute(
+        self.db.execute(
             "UPDATE bookings SET status = 'paid' WHERE id = ?",
             (booking.booking_id,),
         )
         self.pending_booking_ids.discard(booking.booking_id)
-
-        return True, f"Thank you for your purchase. New balance: {new_balance:.2f}"
+        print("payment done for booking", booking_id)
+        return True, f"Thank you for your purchase. New balance: {balance:.2f}"
 
     def expire_booking(self, booking_id):
-        row = self.database.fetchone("SELECT * FROM bookings WHERE id = ?", (booking_id,))
+        row = self.db.fetchone("SELECT * FROM bookings WHERE id = ?", (booking_id,))
         if row is None or row["status"] != "pending":
             return
 
-        self.database.execute(
+        self.db.execute(
             "UPDATE ticket_types SET stock = stock + ? WHERE id = ?",
             (row["quantity"], row["ticket_type_id"]),
         )
-        self.database.execute(
+        self.db.execute(
             "UPDATE bookings SET status = 'expired' WHERE id = ?",
             (booking_id,),
         )
         self.pending_booking_ids.discard(booking_id)
+        # TODO: maybe notify user that booking expired
 
     def get_user_bookings(self, user_id):
-        return self.database.fetchall(
+        rows = self.db.fetchall(
             """
             SELECT b.*, e.title, e.description, e.location, e.event_date, tt.name AS ticket_type_name
             FROM bookings b
@@ -324,21 +337,28 @@ class BookingService:
             """,
             (user_id,),
         )
+        return rows
 
     def get_booking(self, booking_id):
-        row = self.database.fetchone("SELECT * FROM bookings WHERE id = ?", (booking_id,))
+        row = self.db.fetchone("SELECT * FROM bookings WHERE id = ?", (booking_id,))
         if row is None:
             return None
         return Booking(
-            row["id"], row["user_id"], row["event_id"], row["ticket_type_id"],
-            row["quantity"], row["total_price"], row["status"], row["expires_at"]
+            row["id"],
+            row["user_id"],
+            row["event_id"],
+            row["ticket_type_id"],
+            row["quantity"],
+            row["total_price"],
+            row["status"],
+            row["expire_time"],
         )
 
-    def get_all_booking_statuses(self):
-        return self.database.fetchall(
+    def get_booking_statuses(self):
+        return self.db.fetchall(
             """
             SELECT b.id, u.username, e.title, tt.name AS ticket_type_name,
-                   b.quantity, b.total_price, b.status, b.expires_at
+                   b.quantity, b.total_price, b.status, b.expire_time
             FROM bookings b
             JOIN users u ON b.user_id = u.id
             JOIN events e ON b.event_id = e.id
@@ -349,21 +369,19 @@ class BookingService:
 
 
 class TicketSystem:
-    def __init__(self):
-        self.database = DatabaseManager(DATABASE_PATH)
-        self.auth_service = AuthService(self.database)
-        self.event_service = EventService(self.database)
-        self.balance_service = BalanceService(self.database, self.auth_service)
-        self.booking_service = BookingService(
-            self.database, self.event_service, self.balance_service
+    def __init__(self, DB_path=DB_path):
+        self.db = DB(DB_path)
+        self.auth_sys = Authsys(self.db)
+        self.event_sys = Event_sys(self.db)
+        self.balance_sys = Balance_sys(self.db, self.auth_sys)
+        self.booking_sys = Booking_sys(
+            self.db,
+            self.event_sys,
+            self.balance_sys,
+            self.auth_sys,
         )
         self.current_user = None
-        self.booking_service.process_expired_bookings()
-
-    def refresh_current_user(self):
-        """Call this after balance changes (payment, add balance, etc.)"""
-        if self.current_user:
-            self.current_user = self.auth_service.get_user_by_id(self.current_user.user_id)
+        self.booking_sys.process_expired_bookings()
 
     def close(self):
-        self.database.close()
+        self.db.close()
